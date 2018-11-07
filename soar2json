@@ -1,0 +1,95 @@
+#!/bin/bash
+#
+# soar2json - USM SOAR Schedule Extractor 2018
+# 
+# usage: ./soar2json
+#
+#
+# Copyright 2018 Matieu Lagarde (email: matieu.lagarde@gmail.com)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+echo "USM SOAR Schedule Extractor 2018 by mlaga97"
+echo
+echo "Semester ID is 4191 for Fall 2018, increment by 1 for each following semester"
+echo
+echo -n "Semester ID (e.g. 4191): "
+read SEMESTER
+echo -n "Student ID (e.g. w123456): "
+read USER
+echo -n "Password: "
+read -s PASS
+echo
+
+# Obtained from https://stackoverflow.com/a/10660730
+rawurlencode() {
+  local string="${1}"
+  local strlen=${#string}
+  local encoded=""
+  local pos c o
+
+  for (( pos=0 ; pos<strlen ; pos++ )); do
+     c=${string:$pos:1}
+     case "$c" in
+        [-_.~a-zA-Z0-9] ) o="${c}" ;;
+        * )               printf -v o '%%%02x' "'$c"
+     esac
+     encoded+="${o}"
+  done
+  echo "${encoded}"    # You can either set a return variable (FASTER) 
+  REPLY="${encoded}"   #+or echo the result (EASIER)... or both... :p
+}
+
+PASS=`rawurlencode $PASS`
+
+curl -s 'https://soar.usm.edu/psc/saprd90/EMPLOYEE/SA/c/NUI_FRAMEWORK.PT_LANDINGPAGE.GBL?&cmd=login&languageCd=ENG' --data "userid=$USER&pwd=$PASS" --compressed -c cookies > /dev/null
+
+PSWSSA=`cat cookies | grep pswssa | grep 18011 | sed 's|.*pswssa|pswssa|; s|\t|=|'`
+BIGIP=`cat cookies | grep BIGipServersoar | sed 's|.*BIGipServersoar\t*||'`
+PS_TOKEN=`cat cookies | grep PS_TOKEN | sed 's|.*PS_TOKEN\t*||' | grep -v EXPIRE`
+
+curl -s "https://soar.usm.edu/psc/saprd90/EMPLOYEE/SA/c/SA_LEARNER_SERVICES.SSR_SSENRL_LIST.GBL?ACAD_CAREER=UGRD&INSTITUTION=USM01&STRM=$SEMESTER&&" -H "Cookie: PS_TOKEN=$PS_TOKEN; $PSWSSA; BIGipServersoar=$BIGIP" > output
+
+IFS=$'\n'
+NAMES=( `cat output | grep PAGROUPDIVIDER | sed "s|</td></tr>||; s|.*>||"` )
+STATUS=( `cat output | grep STATUS | sed "s|</span>||; s|.*>||"` )
+UNITS=( `cat output | grep DERIVED_REGFRM1_UNT_TAKEN | sed "s|</span>||; s|.*>||"` )
+GRADING=( `cat output | grep GB_DESCR | sed "s|</span>||; s|.*>||"` )
+GRADES=( `cat output | grep DERIVED_REGFRM1_CRSE_GRADE_OFF | sed "s|</span>||; s|.*>||"` )
+CLASS_NBRS=( `cat output | grep DERIVED_CLS_DTL_CLASS_NBR | sed "s|</span>||; s|.*>||"` )
+SECTIONS=( `cat output | grep MTG_SECTION | sed "s|</a></span>||; s|.*>||"` )
+COMPONENTS=( `cat output | grep MTG_COMP | sed "s|</span>||; s|.*>||"` )
+TIMES=( `cat output | grep MTG_SCHED | sed "s|</span>||; s|.*>||"` )
+ROOMS=( `cat output | grep MTG_LOC | sed "s|</span>||; s|.*>||"` )
+INSTRUCTORS=( `cat output | grep DERIVED_CLS_DTL_SSR_INSTR_LONG | sed "s|</span>||; s|.*>||"` )
+DATES=( `cat output | grep MTG_DATES | sed "s|</span>||; s|.*>||"` )
+
+echo
+for i in "${!NAMES[@]}"; do
+  echo -e ',\n  {'
+  echo '    "name": "'${NAMES[$i]}'",'
+  echo '    "status": "'${STATUS[$i]}'",'
+  echo '    "units": "'${UNITS[$i]}'",'
+  echo '    "grading": "'${GRADING[$i]}'",'
+  echo '    "grade": "'${GRADES[$i]}'",'
+  echo '    "classNbr": "'${CLASS_NBRS[$i]}'",'
+  echo '    "section": "'${SECTIONS[$i]}'",'
+  echo '    "component": "'${COMPONENTS[$i]}'",'
+  echo '    "times": "'${TIMES[$i]}'",'
+  echo '    "room": "'${ROOMS[$i]}'",'
+  echo '    "instructor": "'${INSTRUCTORS[$i]}'",'
+  echo '    "dates": "'${DATES[$i]}'",'
+  echo -n '  }'
+done | sed 's|^,|[|; s|&nbsp;||'
+echo -e '\n]'
