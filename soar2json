@@ -89,7 +89,7 @@ for i in "${!NAMES[@]}"; do
   echo '    "times": "'${TIMES[$i]}'",'
   echo '    "room": "'${ROOMS[$i]}'",'
   echo '    "instructor": "'${INSTRUCTORS[$i]}'",'
-  echo '    "dates": "'${DATES[$i]}'",'
+  echo '    "dates": "'${DATES[$i]}'"'
   echo -n '  }'
 done | sed 's|^,|[|; s|&nbsp;||'
 echo -e '\n]'
